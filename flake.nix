@@ -22,54 +22,44 @@
         '';
 
         screenshot-script = pkgs.writeShellScriptBin "screenshot" ''
-                    set -x
+          # Create screenshots directory if it doesn't exist
+          SCREENSHOT_DIR="$HOME/Pictures/screenshots"
+          mkdir -p "$SCREENSHOT_DIR"
 
-                    # Create screenshots directory if it doesn't exist
-                    SCREENSHOT_DIR="$HOME/Pictures/screenshots"
-                    mkdir -p "$SCREENSHOT_DIR"
-
-                    # Create swappy config directory and config file
-                    SWAPPY_CONFIG_DIR="$HOME/.config/swappy"
-                    mkdir -p "$SWAPPY_CONFIG_DIR"
-                    cat > "$SWAPPY_CONFIG_DIR/config" <<EOF
+          # Create swappy config directory and config file
+          SWAPPY_CONFIG_DIR="$HOME/.config/swappy"
+          mkdir -p "$SWAPPY_CONFIG_DIR"
+          cat > "$SWAPPY_CONFIG_DIR/config" <<EOF
           [Default]
           save_dir=$HOME/Pictures/screenshots
           save_filename_format=%Y-%m-%d_%H-%M-%S_edited.png
           EOF
 
-                    echo "Screenshot directory: $SCREENSHOT_DIR"
+          # Generate ISO timestamp filename
+          TIMESTAMP=$(date -u +"%Y-%m-%d_%H-%M-%S")
+          FILENAME="$SCREENSHOT_DIR/$TIMESTAMP.png"
 
-                    # Generate ISO timestamp filename
-                    TIMESTAMP=$(date -u +"%Y-%m-%d_%H-%M-%S")
-                    FILENAME="$SCREENSHOT_DIR/$TIMESTAMP.png"
+          # Take screenshot with hyprshot
+          ${pkgs.hyprshot}/bin/hyprshot -m region -o "$SCREENSHOT_DIR" -f "$TIMESTAMP.png" 2>/dev/null || exit 0
 
-                    echo "Target filename: $FILENAME"
+          # Wait a moment for file to be written
+          sleep 0.2
 
-                    # Take screenshot with hyprshot
-                    echo "Running hyprshot..."
-                    ${pkgs.hyprshot}/bin/hyprshot -m region -o "$SCREENSHOT_DIR" -f "$TIMESTAMP.png" || true
-                    HYPRSHOT_EXIT=$?
-                    echo "Hyprshot exit code: $HYPRSHOT_EXIT"
+          # Check if file exists
+          if [ ! -f "$FILENAME" ]; then
+            exit 1
+          fi
 
-                    # Wait a moment for file to be written
-                    sleep 0.2
+          echo "Screenshot saved: $FILENAME"
 
-                    # Check if file exists and open in swappy
-                    echo "Checking if file exists..."
-                    ls -lh "$SCREENSHOT_DIR" | tail -3
+          # Open in swappy for editing
+          ${pkgs.swappy}/bin/swappy -f "$FILENAME" 2>/dev/null
 
-                    if [ -f "$FILENAME" ]; then
-                      echo "File found! Opening in swappy..."
-                      ${pkgs.swappy}/bin/swappy -f "$FILENAME"
-                    else
-                      echo "Error: Screenshot file not found at $FILENAME"
-                      if [ $HYPRSHOT_EXIT -ne 0 ]; then
-                        echo "Hyprshot failed or was cancelled (exit code: $HYPRSHOT_EXIT)"
-                      fi
-                      echo "Contents of screenshot directory:"
-                      ls -lh "$SCREENSHOT_DIR"
-                      exit 1
-                    fi
+          # Check if an edited version was saved
+          EDITED_FILES=$(find "$SCREENSHOT_DIR" -name "*_edited.png" -newer "$FILENAME" 2>/dev/null)
+          if [ -n "$EDITED_FILES" ]; then
+            echo "Edited version saved: $EDITED_FILES"
+          fi
         '';
       in {
         packages.default = screenshot-script;
